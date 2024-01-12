@@ -7,8 +7,11 @@ import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.qrcode.QRCodeReader
 import org.apache.pdfbox.Loader
 import org.apache.pdfbox.io.RandomAccessReadBuffer
+import org.apache.pdfbox.pdmodel.PDDocument
 import org.apache.pdfbox.pdmodel.PDResources
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage
+import org.apache.pdfbox.rendering.ImageType
+import org.apache.pdfbox.rendering.PDFRenderer
 import java.awt.image.BufferedImage
 import java.io.InputStream
 
@@ -18,17 +21,21 @@ internal fun decodeQrCodes(input: InputStream): Set<String> =
         .toSet()
 
 private fun images(input: InputStream): List<BufferedImage> =
-    input.use {
-        Loader.loadPDF(RandomAccessReadBuffer(input))
-            .pages
-            .flatMap { images(it.resources) }
+    input.use { stream ->
+        RandomAccessReadBuffer(stream).use { buffer ->
+            Loader.loadPDF(buffer).use { document ->
+                images(document)
+            }
+        }
     }
 
-private fun images(resources: PDResources): List<BufferedImage> =
-    resources.xObjectNames
-        .map { resources.getXObject(it) }
-        .filterIsInstance<PDImage>()
-        .map { it.image }
+private fun images(document: PDDocument): List<BufferedImage> =
+    with(PDFRenderer(document)) {
+        generateSequence(0) { it + 1 }
+            .take(document.numberOfPages)
+            .map { renderImage(it, 1f, ImageType.GRAY) }
+            .toList()
+    }
 
 private fun textOrNull(image: BufferedImage): String? =
     try {
